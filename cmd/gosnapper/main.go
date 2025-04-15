@@ -13,15 +13,18 @@ func main() {
 	// Parse command line options
 	var directory string
 	var jobs int
+	var verbose bool
 
 	flag.StringVar(&directory, "d", "", "Extract files from this directory of the archive")
 	flag.StringVar(&directory, "directory", "", "Extract files from this directory of the archive")
 	flag.IntVar(&jobs, "j", 0, "Number of workers to use")
 	flag.IntVar(&jobs, "jobs", 0, "Number of workers to use")
+	flag.BoolVar(&verbose, "v", false, "Enable verbose output")
+	flag.BoolVar(&verbose, "verbose", false, "Enable verbose output")
 
 	// Custom usage message
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s archive [-d DIR] [-- [TARSNAP OPTIONS]]\n", filepath.Base(os.Args[0]))
+		fmt.Fprintf(os.Stderr, "Usage: %s [-d DIR] archive [-- [TARSNAP OPTIONS]]\n", filepath.Base(os.Args[0]))
 		flag.PrintDefaults()
 	}
 
@@ -52,6 +55,11 @@ func main() {
 		Directory:      directory,
 		ThreadPoolSize: jobs,
 		TarsnapOptions: tarsnapOptions,
+		Verbose:        verbose,
+	}
+
+	if verbose {
+		fmt.Println("Verbose mode enabled")
 	}
 
 	rs := gosnapper.NewGoSnapper(archive, options)

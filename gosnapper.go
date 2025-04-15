@@ -63,6 +63,7 @@ type Options struct {
 	ThreadPoolSize int
 	TarsnapOptions []string
 	Previous       map[string]FileInfo
+	Verbose        bool
 }
 
 // NewGoSnapper creates a new GoSnapper instance
@@ -292,7 +293,10 @@ func (rs *GoSnapper) Run() {
 	fileGroups := rs.FileGroups()
 
 	rs.outputMutex.Lock()
-	fmt.Fprintf(os.Stderr, "Creating %d worker threads for file extraction\n", len(fileGroups))
+	if rs.options.Verbose {
+		fmt.Fprintf(os.Stderr, "Creating %d worker threads for file extraction with %d total files\n", len(fileGroups), len(rs.files))
+		fmt.Fprintf(os.Stderr, "File groups distribution: %d groups with average of %d files per group\n", len(fileGroups), len(rs.files)/max(1, len(fileGroups)))
+	}
 	rs.outputMutex.Unlock()
 
 	for i, files := range fileGroups {
@@ -303,7 +307,13 @@ func (rs *GoSnapper) Run() {
 			startTime := time.Now()
 
 			rs.outputMutex.Lock()
-			fmt.Fprintf(os.Stderr, "Thread %d started with %d files to process\n", idx, len(chunk))
+			if rs.options.Verbose {
+				fmt.Fprintf(os.Stderr, "Thread %d started with %d files to process. Files: %v\n", idx, len(chunk), chunk[:min(5, len(chunk))])
+				if len(chunk) > 5 {
+					fmt.Fprintf(os.Stderr, "... and %d more files\n", len(chunk)-5)
+				}
+				fmt.Fprintf(os.Stderr, "Thread %d working directory: %s\n", idx, rs.options.Directory)
+			}
 			rs.outputMutex.Unlock()
 
 			// Escape glob characters in filenames
@@ -348,17 +358,33 @@ func (rs *GoSnapper) Run() {
 					continue
 				}
 				rs.outputMutex.Lock()
-				fmt.Fprintf(os.Stderr, "%s", line)
+				if rs.options.Verbose {
+					fmt.Fprintf(os.Stderr, "Thread %d output: %s", idx, line)
+				} else {
+					fmt.Fprintf(os.Stderr, "%s", line)
+				}
 				rs.outputMutex.Unlock()
 			}
 
 			if err := cmd.Wait(); err != nil {
 				// Command errors are already handled via stderr
+				if rs.options.Verbose {
+					rs.outputMutex.Lock()
+					fmt.Fprintf(os.Stderr, "Thread %d command execution completed with error: %v\n", idx, err)
+					rs.outputMutex.Unlock()
+				}
+			} else if rs.options.Verbose {
+				rs.outputMutex.Lock()
+				fmt.Fprintf(os.Stderr, "Thread %d command execution completed successfully\n", idx)
+				rs.outputMutex.Unlock()
 			}
 
 			duration := time.Since(startTime)
 			rs.outputMutex.Lock()
-			fmt.Fprintf(os.Stderr, "Thread %d completed in %v with %d files processed\n", idx, duration, len(chunk))
+			if rs.options.Verbose {
+				fmt.Fprintf(os.Stderr, "Thread %d completed in %v with %d files processed. Exit status: %v\n", idx, duration, len(chunk), cmd.ProcessState)
+				fmt.Fprintf(os.Stderr, "Thread %d command executed: %s %s\n", idx, Tarsnap, strings.Join(args, " "))
+			}
 			rs.outputMutex.Unlock()
 		}(i, files)
 	}
@@ -370,4 +396,18 @@ func (rs *GoSnapper) Run() {
 		fmt.Fprintf(os.Stderr, ExitError)
 		rs.outputMutex.Unlock()
 	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
